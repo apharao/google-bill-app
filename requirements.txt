@@ -1,0 +1,4 @@
+streamlit
+fpdf
+pillow
+google-cloud-vision
