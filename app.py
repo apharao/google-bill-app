@@ -1,56 +1,84 @@
 
 import streamlit as st
-from uuid import uuid4
+import io
+import uuid
+from google.cloud import vision
+from google.oauth2 import service_account
+import json
 
-st.set_page_config(page_title="Restaurant Bill Splitter", layout="wide")
+# Set page config
+st.set_page_config(page_title="Bill Splitter", layout="wide")
 
-# Dummy OCR parsed output for demo purposes
+# Load credentials
+credentials = service_account.Credentials.from_service_account_info(
+    json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+)
+
+client = vision.ImageAnnotatorClient(credentials=credentials)
+
+def extract_text_from_image(image_bytes):
+    image = vision.Image(content=image_bytes)
+    response = client.text_detection(image=image)
+    texts = response.text_annotations
+    return texts[0].description if texts else ""
+
+def parse_items(raw_text, has_quantity):
+    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+    items = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if has_quantity:
+            try:
+                desc = line
+                qty = float(lines[i + 1])
+                price = float(lines[i + 2])
+                items.append({
+                    "id": str(uuid.uuid4()),
+                    "description": desc,
+                    "price": price
+                })
+                i += 3
+            except:
+                i += 1
+        else:
+            try:
+                desc = line
+                price = float(lines[i + 1])
+                items.append({
+                    "id": str(uuid.uuid4()),
+                    "description": desc,
+                    "price": price
+                })
+                i += 2
+            except:
+                i += 1
+    return items
+
+st.title("📷 Receipt Splitter")
+
 if "parsed_items" not in st.session_state:
-    st.session_state.parsed_items = [
-        {"id": str(uuid4()), "description": "Dos Hombres Mezcal", "price": 9.99},
-        {"id": str(uuid4()), "description": "Discount During Happy Hour", "price": -2.00},
-        {"id": str(uuid4()), "description": "Margarita", "price": 2.00},
-        {"id": str(uuid4()), "description": "HH Chicken Lettuce Wraps", "price": 7.75},
-        {"id": str(uuid4()), "description": "HH Fried Chicken Tenders", "price": 7.50},
-    ]
+    st.session_state.parsed_items = []
 
-if "assigned_items" not in st.session_state:
-    st.session_state.assigned_items = {}
+uploaded_file = st.file_uploader("Upload a receipt image", type=["png", "jpg", "jpeg"])
+if uploaded_file:
+    has_quantity = st.checkbox("Does the bill include quantities?", value=True)
 
-st.title("Restaurant Bill Splitter")
+    image_bytes = uploaded_file.read()
+    st.image(image_bytes, caption="Uploaded Receipt", use_container_width=True)
 
-st.subheader("Step 1: Edit Items (if needed)")
-updated_items = []
-for item in st.session_state.parsed_items:
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.text(item["description"])
-    with col2:
-        price = st.text_input(f"Edit price for {item['description']}", value=str(item["price"]), key=f"price_{item['id']}")
-    item["price"] = float(price)
-    updated_items.append(item)
-st.session_state.parsed_items = updated_items
+    if st.button("Run OCR and Parse"):
+        with st.spinner("Extracting and parsing text..."):
+            text = extract_text_from_image(image_bytes)
+            st.session_state.parsed_items = parse_items(text, has_quantity)
 
-st.divider()
-st.subheader("Step 2: Assign Items to Person")
-person_name = st.text_input("Enter person’s name")
-
-if person_name:
-    unassigned_items = [item for item in st.session_state.parsed_items if item["id"] not in st.session_state.assigned_items]
-    selected_ids = st.multiselect("Select items to assign", [f"{item['description']} - ${item['price']}" for item in unassigned_items])
-
-    if st.button("Assign Selected Items"):
-        for label in selected_ids:
-            for item in unassigned_items:
-                full_label = f"{item['description']} - ${item['price']}"
-                if full_label == label:
-                    st.session_state.assigned_items[item["id"]] = person_name
-        st.success(f"Assigned selected items to {person_name}")
-
-st.divider()
-st.subheader("Currently Assigned Items")
-for item in st.session_state.parsed_items:
-    if item["id"] in st.session_state.assigned_items:
-        st.markdown(f"~~{item['description']} - ${item['price']}~~ → {st.session_state.assigned_items[item['id']]}")
-    else:
-        st.markdown(f"{item['description']} - ${item['price']}")
+if st.session_state.parsed_items:
+    st.subheader("🧾 Parsed Items")
+    for item in st.session_state.parsed_items:
+        col1, col2 = st.columns([4, 1])
+        item["description"] = col1.text_input(
+            f"Description for ${item['price']}", value=item["description"], key=f"desc_{item['id']}"
+        )
+        item["price"] = col2.text_input(
+            f"Price for {item['description']}", value=str(item["price"]), key=f"price_{item['id']}"
+        )
