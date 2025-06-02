@@ -1,47 +1,61 @@
 
 import streamlit as st
-import re
+from google.cloud import vision
+from google.oauth2 import service_account
+import json
 import uuid
 
-st.set_page_config(page_title="Receipt Parser", layout="centered")
+# Load credentials using json.loads on secrets
+credentials = service_account.Credentials.from_service_account_info(
+    json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+)
+client = vision.ImageAnnotatorClient(credentials=credentials)
 
-def parse_ocr_text(text, includes_quantity):
+st.title("📸 Restaurant Bill OCR Parser")
+uploaded_file = st.file_uploader("Upload receipt image", type=["png", "jpg", "jpeg"])
+
+quantity_mode = st.checkbox("Does the receipt include quantities?", value=True)
+
+if uploaded_file:
+    image_bytes = uploaded_file.read()
+    image = vision.Image(content=image_bytes)
+    response = client.text_detection(image=image)
+    text = response.text_annotations[0].description if response.text_annotations else ""
+
+    st.text_area("Extracted Text", value=text, height=300)
+
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     items = []
     i = 0
 
     while i < len(lines):
         desc = lines[i]
-        if i + 2 < len(lines) and re.match(r"^-?\d+\.\d{2}$", lines[i+1]) and re.match(r"^-?\d+\.\d{2}$", lines[i+2]):
-            # Case: description + quantity + price
-            price = float(lines[i+2])
-            i += 3
-        elif i + 1 < len(lines) and re.match(r"^-?\d+\.\d{2}$", lines[i+1]):
-            # Case: description + price (no quantity)
-            price = float(lines[i+1])
-            i += 2
-        else:
+        qty = None
+        price = None
+        try:
+            if quantity_mode and i + 2 < len(lines):
+                qty_candidate = float(lines[i+1])
+                price_candidate = float(lines[i+2])
+                qty = qty_candidate
+                price = price_candidate
+                i += 3
+            elif i + 1 < len(lines):
+                price_candidate = float(lines[i+1])
+                price = price_candidate
+                i += 2
+            else:
+                i += 1
+                continue
+            items.append({
+                "id": str(uuid.uuid4()),
+                "description": desc,
+                "price": price
+            })
+        except ValueError:
             i += 1
-            continue
 
-        items.append({
-            "id": str(uuid.uuid4()),
-            "description": desc,
-            "price": price
-        })
-    return items
-
-st.title("🧾 Receipt OCR Parser")
-
-editable_text = st.text_area("Paste or Edit OCR Text:", height=300)
-
-includes_quantity = st.checkbox("This receipt includes quantities")
-
-if st.button("Parse Items"):
-    st.session_state.parsed_items = parse_ocr_text(editable_text, includes_quantity)
-    st.success("Parsed items updated.")
-
-if "parsed_items" in st.session_state:
     st.subheader("Parsed Items")
-    for item in st.session_state.parsed_items:
-        st.markdown(f"- **{item['description']}** - ${item['price']:.2f}")
+    if not items:
+        st.write("⚠️ No items could be parsed.")
+    for item in items:
+        st.write(f"{item['description']} - ${item['price']:.2f}")
