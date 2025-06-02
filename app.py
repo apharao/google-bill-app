@@ -20,78 +20,59 @@ credentials = service_account.Credentials.from_service_account_info(
 vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 
 # --- FUNCTION: PARSE ITEMS ---
+
+
 def parse_items(text):
-    lines = text.split("\n")
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
     items = []
-    pattern = re.compile(r"(.+?)\s+\$?(-?\d+\.\d{2})$")
-    discount_pattern = re.compile(r"(discount.*?-?\$\d+\.\d{2})", re.IGNORECASE)
     skip_keywords = ["subtotal", "total", "tax", "tip", "change", "cash", "payment", "visa", "mastercard"]
+    discount_keywords = ["discount", "happy hour"]
 
     st.markdown("### Debug: Parsed Lines")
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if any(word in stripped.lower() for word in skip_keywords):
-            st.text(f"Skipping: {stripped}")
-            continue
-        match = pattern.search(stripped)
-        if match:
-            desc, price = match.groups()
-            item = {"id": str(uuid.uuid4()), "description": desc.strip(), "price": float(price)}
+    i = 0
+    while i < len(lines) - 2:
+        desc = lines[i]
+        qty = lines[i + 1]  # ignored
+        price = lines[i + 2]
+
+        # Check if discount
+        if any(k in desc.lower() for k in discount_keywords):
+            st.text(f"Discount line detected: {desc}")
+            if items:
+                try:
+                    discount = float(price.replace("$", "").replace(",", ""))
+                    items[-1]["price"] += discount  # discount is negative
+                    items[-1]["description"] += " (discount applied)"
+                    st.text(f"Applied discount {discount} to previous item: {items[-1]}")
+                    i += 3
+                    continue
+                except ValueError:
+                    st.text(f"Invalid discount price: {price}")
+                    i += 1
+                    continue
+            else:
+                st.text("Warning: discount appeared before any item")
+                i += 1
+                continue
+
+        try:
+            float_price = float(price.replace("$", "").replace(",", ""))
+            item = {
+                "id": str(uuid.uuid4()),
+                "description": desc,
+                "price": float_price
+            }
             st.text(f"Matched: {item}")
             items.append(item)
-        elif discount_pattern.search(stripped) and items:
-            discount = float(re.findall(r"-?\$([\d\.]+)", stripped)[-1])
-            items[-1]["price"] -= discount
-            items[-1]["description"] += " (discount applied)"
-            st.text(f"Applied discount to: {items[-1]}")
-        else:
-            st.text(f"No match: {stripped}")
+            i += 3
+        except ValueError:
+            st.text(f"No match: {desc}, {qty}, {price}")
+            i += 1
+
     return items
 
-# --- SESSION STATE ---
-if "parsed_items" not in st.session_state:
-    st.session_state.parsed_items = []
-if "assignments" not in st.session_state:
-    st.session_state.assignments = {}
 
-# --- STEP 1: Upload and OCR ---
-st.title("📸 Restaurant Bill Splitter")
-
-uploaded_file = st.file_uploader("Upload a photo of your receipt", type=["png", "jpg", "jpeg"])
-if uploaded_file:
-    image = Image.open(uploaded_file)
-
-    try:
-        for orientation in ExifTags.TAGS.keys():
-            if ExifTags.TAGS[orientation] == 'Orientation':
-                break
-        exif = dict(image._getexif().items())
-        if exif[orientation] == 3:
-            image = image.rotate(180, expand=True)
-        elif exif[orientation] == 6:
-            image = image.rotate(270, expand=True)
-        elif exif[orientation] == 8:
-            image = image.rotate(90, expand=True)
-    except:
-        pass
-
-    st.image(image, caption="Uploaded Receipt", use_container_width=True)
-
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    content = img_byte_arr.getvalue()
-
-    image_google = vision.Image(content=content)
-    response = vision_client.text_detection(image=image_google)
-    texts = response.text_annotations
-    if not texts:
-        st.error("No text detected.")
-        st.stop()
-
-    raw_text = texts[0].description
-    editable_text = st.text_area("OCR Output - Edit if needed", raw_text, height=300)
-
-    st.session_state.parsed_items = parse_items(editable_text)
+st.session_state.parsed_items = parse_items(editable_text)
 
     st.subheader("Parsed Items")
     if st.session_state.parsed_items:
