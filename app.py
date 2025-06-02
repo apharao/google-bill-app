@@ -69,7 +69,8 @@ if uploaded_file:
     if header or force_mode:
         st.success("Table header detected. Parsing structured rows...")
         # Estimate column x-positions
-        header_sorted = sorted(header, key=lambda w: w["x"])
+        header_dicts = [{"text": "".join([s.text for s in w.symbols]), "x": int(sum(v.x for v in w.bounding_box.vertices) / 4), "y": int(sum(v.y for v in w.bounding_box.vertices) / 4)} for w in header]
+header_sorted = sorted(header_dicts, key=lambda w: w["x"])
         col_x = [w["x"] for w in header_sorted]
         col_labels = [w["text"].lower() for w in header_sorted]
 
