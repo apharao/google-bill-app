@@ -12,39 +12,40 @@ if "tax_rate" not in st.session_state:
     st.session_state.tax_rate = 0.0
 if "current_items" not in st.session_state:
     st.session_state.current_items = []
-
-# Buffer fields for new item entry
-if "item_description" not in st.session_state:
-    st.session_state.item_description = ""
-if "item_price" not in st.session_state:
-    st.session_state.item_price = 0.0
+if "reset_fields" not in st.session_state:
+    st.session_state.reset_fields = False
+if "edit_mode" not in st.session_state:
+    st.session_state.edit_mode = {}
 
 st.title("Bill Splitter with Tax & Tip")
 
-# Step 1: Set tax rate once
+# Set tax rate once
 if st.session_state.current_person_index == 0 and not st.session_state.people_data:
     st.session_state.tax_rate = st.number_input("Enter tax rate (%) for everyone", min_value=0.0, step=0.01)
 
-# Step 2: Per person input
+# Person info
 st.header(f"Person #{st.session_state.current_person_index + 1}")
 
 with st.form("person_form", clear_on_submit=False):
     name = st.text_input("Enter person's name")
     tip_percent = st.number_input("Enter tip percentage for this person", min_value=0.0, step=0.01)
 
-    desc = st.text_input("Item description", key="item_description", placeholder="e.g. Tacos", label_visibility="visible")
-    price = st.number_input("Item price", step=0.01, key="item_price")
+    # Handle field reset
+    default_desc = "" if st.session_state.reset_fields else st.session_state.get("item_description", "")
+    default_price = 0.0 if st.session_state.reset_fields else st.session_state.get("item_price", 0.0)
+    st.session_state.reset_fields = False  # Clear flag
+
+    desc = st.text_input("Item description", key="item_description", value=default_desc, placeholder="e.g. Tacos")
+    price = st.number_input("Item price", value=default_price, step=0.01, key="item_price")
 
     col1, col2 = st.columns(2)
     add_item = col1.form_submit_button("Add Item")
     finalize = col2.form_submit_button("Finalize Person")
 
-    if add_item:
-        if desc and price > 0:
-            st.session_state.current_items.append({"description": desc, "price": price})
-            st.session_state.item_description = ""
-            st.session_state.item_price = 0.0
-            st.rerun()
+    if add_item and desc and price > 0:
+        st.session_state.current_items.append({"description": desc, "price": price})
+        st.session_state.reset_fields = True
+        st.rerun()
 
     if finalize and name and st.session_state.current_items:
         st.session_state.people_data.append({
@@ -54,18 +55,23 @@ with st.form("person_form", clear_on_submit=False):
         })
         st.session_state.current_person_index += 1
         st.session_state.current_items.clear()
-        st.session_state.item_description = ""
-        st.session_state.item_price = 0.0
+        st.session_state.reset_fields = True
         st.rerun()
 
-
-# Show live items with edit/delete
+# Show editable/deletable items
 if st.session_state.current_items:
     st.subheader("Current Items for This Person")
     for i, item in enumerate(st.session_state.current_items):
         col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
-        new_desc = col1.text_input(f"Description {i}", item["description"], key=f"edit_desc_{i}")
-        new_price = col2.number_input(f"Price {i}", value=item["price"], step=0.01, key=f"edit_price_{i}")
+        desc_key = f"edit_desc_{i}"
+        price_key = f"edit_price_{i}"
+        if desc_key not in st.session_state:
+            st.session_state[desc_key] = item["description"]
+        if price_key not in st.session_state:
+            st.session_state[price_key] = item["price"]
+
+        new_desc = col1.text_input(f"Description {i}", value=st.session_state[desc_key], key=desc_key)
+        new_price = col2.number_input(f"Price {i}", value=st.session_state[price_key], step=0.01, key=price_key)
         update = col3.button("Update", key=f"update_{i}")
         delete = col4.button("🗑", key=f"delete_{i}")
         if update:
@@ -75,13 +81,7 @@ if st.session_state.current_items:
             del st.session_state.current_items[i]
             st.rerun()
 
-# Show live items
-if st.session_state.current_items:
-    st.subheader("Current Items for This Person")
-    for i, item in enumerate(st.session_state.current_items, 1):
-        st.markdown(f"**{i}.** {item['description']} - ${item['price']:.2f}")
-
-# Step 3: PDF generation
+# PDF generation
 if len(st.session_state.people_data) > 0 and st.button("Generate PDF Summary"):
     pdf = FPDF()
     pdf.add_page()
@@ -117,7 +117,7 @@ if len(st.session_state.people_data) > 0 and st.button("Generate PDF Summary"):
     effective_tip = (total_tip / total_item_cost * 100) if total_item_cost > 0 else 0.0
     pdf.cell(200, 10, f"Effective Tip Percentage: {effective_tip:.2f}%", ln=True)
 
-    output_path = "/mnt/data/simplified_dynamic_bill_summary_resetfix.pdf"
+    output_path = "/mnt/data/simplified_dynamic_bill_summary_autofix.pdf"
     pdf.output(output_path)
     st.success("PDF Generated!")
     st.download_button("Download PDF", data=open(output_path, "rb"), file_name="bill_summary.pdf")
