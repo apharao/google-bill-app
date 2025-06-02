@@ -26,37 +26,47 @@ if not st.session_state.tax_set:
         st.session_state.tax_set = True
         st.rerun()
 
-# Person section
-if st.session_state.tax_set:
-    st.header(f"Person #{st.session_state.current_person_index + 1}")
 
-    with st.form("person_form", clear_on_submit=True):
+    # Person section
+    if st.session_state.tax_set:
+        st.header(f"Person #{st.session_state.current_person_index + 1}")
+
         if "current_name" not in st.session_state:
-    st.session_state.current_name = ""
-name = st.text_input("Enter person's name", value=st.session_state.current_name)
-st.session_state.current_name = name
-        tip_percent = st.number_input("Tip percentage for this person", min_value=0.0, step=0.01)
+            st.session_state.current_name = ""
 
-        desc = st.text_input("Item description", placeholder="e.g. Tacos")
-        price = st.number_input("Item price", min_value=0.0, step=0.01)
+        with st.form("person_form", clear_on_submit=True):
+            name = st.text_input("Enter person's name", value=st.session_state.current_name)
+            st.session_state.current_name = name
 
-        col1, col2 = st.columns(2)
-        add_item = col1.form_submit_button("Add Item")
-        finalize = col2.form_submit_button("Finalize Person")
+            tip_percent = st.number_input("Tip percentage for this person", min_value=0.0, step=0.01)
+            desc = st.text_input("Item description", placeholder="e.g. Tacos")
+            price = st.number_input("Item price", min_value=0.0, step=0.01)
 
-        if add_item and desc and price > 0:
-            st.session_state.current_items.append({"description": desc, "price": price})
-            st.rerun()
+            col1, col2 = st.columns(2)
+            add_item = col1.form_submit_button("Add Item")
+            finalize = col2.form_submit_button("Finalize Person")
 
-        if finalize and name and st.session_state.current_items:
-                    st.session_state.people_data.append({
+            if add_item and desc and price > 0:
+                st.session_state.current_items.append({"description": desc, "price": price})
+                st.rerun()
+
+            if finalize and name and st.session_state.current_items:
+                st.session_state.people_data.append({
+                    "name": name,
+                    "tip_percent": tip_percent,
+                    "items": st.session_state.current_items.copy()
+                })
+                st.session_state.current_person_index += 1
+                st.session_state.current_items.clear()
+                st.session_state.current_name = ""
+                st.rerun()
+            st.session_state.people_data.append({
                 "name": name,
                 "tip_percent": tip_percent,
                 "items": st.session_state.current_items.copy()
             })
             st.session_state.current_person_index += 1
-                    st.session_state.current_items.clear()
-        st.session_state.current_name = ""
+            st.session_state.current_items.clear()
             st.rerun()
 
 # Editable/deletable items
