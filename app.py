@@ -1,66 +1,62 @@
 
 import streamlit as st
+import json
 from google.oauth2 import service_account
 from google.cloud import vision
 import uuid
 import re
-import os
 
-# Authenticate with Google Cloud Vision using Streamlit secrets
-credentials = service_account.Credentials.from_service_account_info(
-    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
-)
+# Load Google credentials properly
+service_account_info = json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+credentials = service_account.Credentials.from_service_account_info(service_account_info)
 client = vision.ImageAnnotatorClient(credentials=credentials)
 
-st.set_page_config(page_title="Restaurant Bill Splitter", layout="wide")
-st.title("🍽️ Restaurant Bill Splitter with Google OCR")
+st.title("Restaurant Bill Splitter (Google Vision OCR)")
 
-uploaded_file = st.file_uploader("Upload a receipt image (JPG/PNG)", type=["jpg", "jpeg", "png"])
-use_quantities = st.checkbox("Bill includes quantities?", value=True)
-
-def extract_text_from_image(image_bytes):
-    image = vision.Image(content=image_bytes)
-    response = client.text_detection(image=image)
-    texts = response.text_annotations
-    return texts[0].description if texts else ""
-
-def parse_items(text, use_quantities):
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-    items = []
-    last_description = ""
-    debug_output = []
-
-    for line in lines:
-        debug_output.append(f"Line: {line}")
-        match = re.match(r"^(.*?)(\s+)(-?\d+\.\d{2})$", line)
-        if match:
-            description = match.group(1).strip()
-            price = float(match.group(3))
-            if use_quantities:
-                qty_price_match = re.match(r"^(.*)\s+\d+\.\d{2}$", description)
-                if qty_price_match:
-                    description = qty_price_match.group(1).strip()
-            item = {"id": str(uuid.uuid4()), "description": description, "price": price}
-            items.append(item)
-            debug_output.append(f"Matched: {item}")
-        else:
-            debug_output.append("No match")
-
-    st.session_state.debug_output = debug_output
-    return items
+uploaded_file = st.file_uploader("Upload a receipt image", type=["jpg", "jpeg", "png"])
+use_quantity = st.checkbox("Does the bill include quantities?", value=True)
 
 if uploaded_file:
-    image_bytes = uploaded_file.read()
-    extracted_text = extract_text_from_image(image_bytes)
-    editable_text = st.text_area("Edit OCR'd text", extracted_text, height=300)
-    if st.button("Parse Items"):
-        st.session_state.parsed_items = parse_items(editable_text, use_quantities)
-        st.success("Parsed items updated.")
+    from PIL import Image, ExifTags
+    image = Image.open(uploaded_file)
+    for orientation in ExifTags.TAGS.keys():
+        if ExifTags.TAGS[orientation] == 'Orientation':
+            break
+    try:
+        exif = dict(image._getexif().items())
+        if exif[orientation] == 3:
+            image = image.rotate(180, expand=True)
+        elif exif[orientation] == 6:
+            image = image.rotate(270, expand=True)
+        elif exif[orientation] == 8:
+            image = image.rotate(90, expand=True)
+    except:
+        pass
 
-if "debug_output" in st.session_state:
-    st.subheader("🔍 Debug Log")
-    for log in st.session_state.debug_output:
-        st.text(log)
+    st.image(image, caption="Uploaded Receipt", use_container_width=True)
+    image.save("temp.png")
+
+    with open("temp.png", "rb") as img_file:
+        content = img_file.read()
+    image_for_ocr = vision.Image(content=content)
+    response = client.text_detection(image=image_for_ocr)
+    texts = response.text_annotations
+
+    if texts:
+        full_text = texts[0].description
+        st.text_area("Editable OCR Text", value=full_text, height=300, key="ocr_text")
+
+        if st.button("Parse Items"):
+            lines = [line.strip() for line in full_text.split("\n") if line.strip()]
+            parsed_items = []
+            for line in lines:
+                match = re.match(r"^(.*?)(?:\s+\d+(?:\.\d{1,2})?)?\s+(\$?-?\d+(\.\d{2})?)$", line)
+                if match:
+                    desc = match.group(1).strip()
+                    price = float(match.group(2).replace("$", "").replace(",", ""))
+                    parsed_items.append({"id": str(uuid.uuid4()), "description": desc, "price": price})
+            st.session_state.parsed_items = parsed_items
+            st.write("Parsed items updated.")
 
 if "parsed_items" in st.session_state:
     st.subheader("Parsed Items")
