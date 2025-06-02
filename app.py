@@ -22,7 +22,9 @@ vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 # --- FUNCTION: PARSE ITEMS ---
 
 
+
 def parse_items(text):
+    st.markdown("🔥 **Running updated parser with discount logic**")
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     items = []
     skip_keywords = ["subtotal", "total", "tax", "tip", "change", "cash", "payment", "visa", "mastercard"]
@@ -35,13 +37,12 @@ def parse_items(text):
         qty = lines[i + 1]  # ignored
         price = lines[i + 2]
 
-        # Check if discount
         if any(k in desc.lower() for k in discount_keywords):
             st.text(f"Discount line detected: {desc}")
             if items:
                 try:
                     discount = float(price.replace("$", "").replace(",", ""))
-                    items[-1]["price"] += discount  # discount is negative
+                    items[-1]["price"] += discount
                     items[-1]["description"] += " (discount applied)"
                     st.text(f"Applied discount {discount} to previous item: {items[-1]}")
                     i += 3
