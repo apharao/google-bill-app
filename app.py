@@ -32,7 +32,7 @@ with st.form("person_form", clear_on_submit=False):
     name = st.text_input("Enter person's name")
     tip_percent = st.number_input("Enter tip percentage for this person", min_value=0.0, step=0.01)
 
-    desc = st.text_input("Item description", key="item_description")
+    desc = st.text_input("Item description", key="item_description", placeholder="e.g. Tacos", label_visibility="visible")
     price = st.number_input("Item price", step=0.01, key="item_price")
 
     col1, col2 = st.columns(2)
@@ -57,6 +57,23 @@ with st.form("person_form", clear_on_submit=False):
         st.session_state.item_description = ""
         st.session_state.item_price = 0.0
         st.rerun()
+
+
+# Show live items with edit/delete
+if st.session_state.current_items:
+    st.subheader("Current Items for This Person")
+    for i, item in enumerate(st.session_state.current_items):
+        col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
+        new_desc = col1.text_input(f"Description {i}", item["description"], key=f"edit_desc_{i}")
+        new_price = col2.number_input(f"Price {i}", value=item["price"], step=0.01, key=f"edit_price_{i}")
+        update = col3.button("Update", key=f"update_{i}")
+        delete = col4.button("🗑", key=f"delete_{i}")
+        if update:
+            st.session_state.current_items[i] = {"description": new_desc, "price": new_price}
+            st.rerun()
+        if delete:
+            del st.session_state.current_items[i]
+            st.rerun()
 
 # Show live items
 if st.session_state.current_items:
