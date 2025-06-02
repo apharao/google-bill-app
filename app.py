@@ -56,3 +56,4 @@ if "parsed_items" in st.session_state:
     st.subheader("Parsed Items")
     for item in st.session_state.parsed_items:
         st.write(f"{item['description']} - ${item['price']:.2f}")
+# Minor change to force deployment
