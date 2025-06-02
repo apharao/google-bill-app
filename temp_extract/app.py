@@ -3,13 +3,14 @@ import streamlit as st
 import uuid
 from fpdf import FPDF
 import tempfile
-import os
 
 # Initialize session state
 if "people_data" not in st.session_state:
     st.session_state.people_data = []
 if "current_person_index" not in st.session_state:
     st.session_state.current_person_index = 0
+if "tax_set" not in st.session_state:
+    st.session_state.tax_set = False
 if "tax_rate" not in st.session_state:
     st.session_state.tax_rate = 0.0
 if "current_items" not in st.session_state:
@@ -17,63 +18,62 @@ if "current_items" not in st.session_state:
 
 st.title("Bill Splitter with Tax & Tip")
 
-# Input keys that are safe to reset
-desc_key = "new_item_desc"
-price_key = "new_item_price"
+# Global tax rate (shown once before first person)
+if not st.session_state.tax_set:
+    st.subheader("Set Global Tax Rate")
+    st.session_state.tax_rate = st.number_input("Tax rate (%)", min_value=0.0, step=0.01)
+    if st.button("Lock Tax Rate"):
+        st.session_state.tax_set = True
+        st.rerun()
 
-# Set tax rate
-if st.session_state.current_person_index == 0 and not st.session_state.people_data:
-    st.session_state.tax_rate = st.number_input("Enter tax rate (%) for everyone", min_value=0.0, step=0.01)
+# Person section
+if st.session_state.tax_set:
+    st.header(f"Person #{st.session_state.current_person_index + 1}")
 
-# Person input section
-st.header(f"Person #{st.session_state.current_person_index + 1}")
+    with st.form("person_form", clear_on_submit=True):
+        name = st.text_input("Enter person's name")
+        tip_percent = st.number_input("Tip percentage for this person", min_value=0.0, step=0.01)
 
-with st.form("person_form"):
-    name = st.text_input("Enter person's name")
-    tip_percent = st.number_input("Enter tip percentage for this person", min_value=0.0, step=0.01)
+        desc = st.text_input("Item description", placeholder="e.g. Tacos")
+        price = st.number_input("Item price", min_value=0.0, step=0.01)
 
-    desc = st.text_input("Item description", key=desc_key)
-    price = st.number_input("Item price", min_value=0.0, step=0.01, key=price_key)
+        col1, col2 = st.columns(2)
+        add_item = col1.form_submit_button("Add Item")
+        finalize = col2.form_submit_button("Finalize Person")
 
-    col1, col2 = st.columns(2)
-    add_item = col1.form_submit_button("Add Item")
-    finalize = col2.form_submit_button("Finalize Person")
+        if add_item and desc and price > 0:
+            st.session_state.current_items.append({"description": desc, "price": price})
+            st.rerun()
 
-    if add_item and desc and price > 0:
-        st.session_state.current_items.append({"description": desc, "price": price})
-        st.session_state[desc_key] = ""
-        st.session_state[price_key] = 0.0
-        st.experimental_rerun()
-
-    if finalize and name and st.session_state.current_items:
-        st.session_state.people_data.append({
-            "name": name,
-            "tip_percent": tip_percent,
-            "items": st.session_state.current_items.copy()
-        })
-        st.session_state.current_person_index += 1
-        st.session_state.current_items.clear()
-        st.session_state[desc_key] = ""
-        st.session_state[price_key] = 0.0
-        st.experimental_rerun()
+        if finalize and name and st.session_state.current_items:
+            st.session_state.people_data.append({
+                "name": name,
+                "tip_percent": tip_percent,
+                "items": st.session_state.current_items.copy()
+            })
+            st.session_state.current_person_index += 1
+            st.session_state.current_items.clear()
+            st.rerun()
 
 # Editable/deletable items
 if st.session_state.current_items:
     st.subheader("Current Items for This Person")
     for i, item in enumerate(st.session_state.current_items):
         col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
-        new_desc = col1.text_input(f"Description {i}", value=item["description"], key=f"desc_{i}")
-        new_price = col2.number_input(f"Price {i}", value=item["price"], step=0.01, key=f"price_{i}")
+        desc_key = f"desc_{i}"
+        price_key = f"price_{i}"
+        new_desc = col1.text_input(f"Description {i}", item["description"], key=desc_key)
+        new_price = col2.number_input(f"Price {i}", value=item["price"], step=0.01, key=price_key)
         update = col3.button("Update", key=f"update_{i}")
         delete = col4.button("🗑", key=f"delete_{i}")
         if update:
             st.session_state.current_items[i] = {"description": new_desc, "price": new_price}
-            st.experimental_rerun()
+            st.rerun()
         if delete:
             del st.session_state.current_items[i]
-            st.experimental_rerun()
+            st.rerun()
 
-# Generate PDF safely using tempfile
+# Generate PDF
 if len(st.session_state.people_data) > 0 and st.button("Generate PDF Summary"):
     pdf = FPDF()
     pdf.add_page()
