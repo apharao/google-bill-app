@@ -23,6 +23,7 @@ vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 
 
 
+
 def parse_items(text):
     st.markdown("🔥 **Running updated parser with discount logic**")
     lines = [line.strip() for line in text.split("\n") if line.strip()]
@@ -73,7 +74,16 @@ def parse_items(text):
     return items
 
 
+
 st.session_state.parsed_items = parse_items(editable_text)
+
+st.subheader("Parsed Items")
+if st.session_state.parsed_items:
+    for item in st.session_state.parsed_items:
+        st.write(f"{item['description']} - ${item['price']:.2f}")
+else:
+    st.warning("No items were parsed. Check the debug output above.")
+
 
     st.subheader("Parsed Items")
     if st.session_state.parsed_items:
