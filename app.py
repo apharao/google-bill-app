@@ -1,29 +1,17 @@
-
 import streamlit as st
+import uuid
 from google.cloud import vision
 from google.oauth2 import service_account
 from PIL import Image, ExifTags
 import io
-import re
-import json
-import uuid
 from fpdf import FPDF
 
-# --- GOOGLE CLOUD VISION SETUP ---
-if "GOOGLE_APPLICATION_CREDENTIALS_JSON" not in st.secrets:
-    st.error("Google credentials not found in Streamlit secrets.")
-    st.stop()
-
+# 🔐 Google credentials from st.secrets
 credentials = service_account.Credentials.from_service_account_info(
-    json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
 )
-vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 
-# --- FUNCTION: PARSE ITEMS ---
-
-
-
-
+# 🔥 Confirm new parser is in use
 def parse_items(text):
     st.markdown("🔥 **Running updated parser with discount logic**")
     lines = [line.strip() for line in text.split("\n") if line.strip()]
@@ -73,88 +61,48 @@ def parse_items(text):
 
     return items
 
+def extract_text_from_image(uploaded_image):
+    image = Image.open(uploaded_image)
+    try:
+        for orientation in ExifTags.TAGS.keys():
+            if ExifTags.TAGS[orientation] == 'Orientation':
+                break
+        exif = dict(image._getexif().items())
+        orientation = exif.get(orientation, 1)
+        if orientation == 3:
+            image = image.rotate(180, expand=True)
+        elif orientation == 6:
+            image = image.rotate(270, expand=True)
+        elif orientation == 8:
+            image = image.rotate(90, expand=True)
+    except:
+        pass
 
+    buffer = io.BytesIO()
+    image.save(buffer, format='PNG')
+    content = buffer.getvalue()
 
-st.session_state.parsed_items = parse_items(editable_text)
+    client = vision.ImageAnnotatorClient(credentials=credentials)
+    image = vision.Image(content=content)
+    response = client.text_detection(image=image)
+    texts = response.text_annotations
+    return texts[0].description if texts else ""
 
-st.subheader("Parsed Items")
-if st.session_state.parsed_items:
-    for item in st.session_state.parsed_items:
-        st.write(f"{item['description']} - ${item['price']:.2f}")
-else:
-    st.warning("No items were parsed. Check the debug output above.")
+# App layout
+st.title("🧾 Google OCR Bill Splitter")
+uploaded_file = st.file_uploader("Upload a receipt image", type=["png", "jpg", "jpeg"])
 
+if uploaded_file:
+    raw_text = extract_text_from_image(uploaded_file)
+    editable_text = st.text_area("✏️ Review and edit OCR text below:", raw_text, height=300)
 
+    if st.button("Parse Items"):
+        st.session_state.parsed_items = parse_items(editable_text)
+
+if "parsed_items" in st.session_state:
     st.subheader("Parsed Items")
     if st.session_state.parsed_items:
         for item in st.session_state.parsed_items:
             st.write(f"{item['description']} - ${item['price']:.2f}")
     else:
         st.warning("No items were parsed. Check the debug output above.")
-
-# --- STEP 3: Assign Items ---
-st.subheader("Assign Items")
-assigned_ids = {item["id"] for v in st.session_state.assignments.values() for item in v["items"]}
-unassigned_items = [i for i in st.session_state.parsed_items if i["id"] not in assigned_ids] if st.session_state.parsed_items else []
-
-name = st.text_input("Name", key="name_input")
-tax_rate = st.number_input("Tax %", min_value=0.0, max_value=100.0, step=0.1, key="tax_input")
-tip_rate = st.number_input("Tip %", min_value=0.0, max_value=100.0, step=0.1, key="tip_input")
-
-selected = []
-if unassigned_items:
-    for item in unassigned_items:
-        label = f"{item['description']} - ${item['price']:.2f}"
-        if st.checkbox(label, key=f"item_{item['id']}"):
-            selected.append(item)
-else:
-    st.info("No items available to assign yet.")
-
-if st.button("Assign to Person") and name and selected:
-    if name not in st.session_state.assignments:
-        st.session_state.assignments[name] = {"tax": tax_rate, "tip": tip_rate, "items": []}
-    st.session_state.assignments[name]["items"].extend(selected)
-
-# --- STEP 3B: Current Assignments and Unassign ---
-st.subheader("Current Assignments")
-for person, data in st.session_state.assignments.items():
-    st.markdown(f"**{person}**")
-    for item in data["items"]:
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.markdown(f"- ~~{item['description']} - ${item['price']:.2f}~~")
-        with col2:
-            if st.button("❌", key=f"unassign_{person}_{item['id']}"):
-                data["items"].remove(item)
-
-# --- STEP 4: Manual Editing ---
-st.subheader("Edit Items")
-for item in st.session_state.parsed_items:
-    item['description'] = st.text_input(f"Edit description:", value=item['description'], key=f"desc_{item['id']}")
-    item['price'] = st.number_input(f"Edit price:", value=item['price'], key=f"price_{item['id']}")
-
-# --- STEP 5 & 6: Export ---
-if st.button("Finish and Export PDF"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    for person, data in st.session_state.assignments.items():
-        pdf.set_font(style="B")
-        pdf.cell(200, 10, txt=person, ln=True)
-        pdf.set_font(style="")
-        subtotal = sum(item['price'] for item in data['items'])
-        tax = subtotal * (data['tax'] / 100)
-        tip = (subtotal + tax) * (data['tip'] / 100)
-        total = subtotal + tax + tip
-        for item in data['items']:
-            pdf.cell(200, 10, txt=f"{item['description']} - ${item['price']:.2f}", ln=True)
-        pdf.cell(200, 10, txt=f"Subtotal: ${subtotal:.2f}", ln=True)
-        pdf.cell(200, 10, txt=f"Tax ({data['tax']}%): ${tax:.2f}", ln=True)
-        pdf.cell(200, 10, txt=f"Tip ({data['tip']}%): ${tip:.2f}", ln=True)
-        pdf.cell(200, 10, txt=f"Total: ${total:.2f}", ln=True)
-        pdf.ln(10)
-
-    pdf_output = io.BytesIO()
-    pdf.output(pdf_output)
-    st.download_button(label="Download PDF Summary", data=pdf_output.getvalue(), file_name="bill_summary.pdf", mime="application/pdf")
