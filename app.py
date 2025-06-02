@@ -5,15 +5,14 @@ from google.oauth2 import service_account
 from PIL import Image, ExifTags
 import io
 from fpdf import FPDF
+import json
 
-# 🔐 Google credentials from st.secrets
-credentials = service_account.Credentials.from_service_account_info(
-    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
-)
+# Load credentials safely from Streamlit secrets
+credentials_json = json.loads(st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON", "{}"))
+credentials = service_account.Credentials.from_service_account_info(credentials_json)
 
-# 🔥 Confirm new parser is in use
 def parse_items(text):
-        st.markdown("🔥 **Running SMART parser with backtracking discount logic**")
+    st.markdown("🔥 **Running SMART parser with backtracking discount logic**")
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     items = []
     discount_keywords = ["discount", "happy hour"]
@@ -60,52 +59,6 @@ def parse_items(text):
             i += 1
         except ValueError:
             st.text(f"Skipped: {line}")
-            i += 1
-
-    return items
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-    items = []
-    skip_keywords = ["subtotal", "total", "tax", "tip", "change", "cash", "payment", "visa", "mastercard"]
-    discount_keywords = ["discount", "happy hour"]
-
-    st.markdown("### Debug: Parsed Lines")
-    i = 0
-    while i < len(lines) - 2:
-        desc = lines[i]
-        qty = lines[i + 1]  # ignored
-        price = lines[i + 2]
-
-        if any(k in desc.lower() for k in discount_keywords):
-            st.text(f"Discount line detected: {desc}")
-            if items:
-                try:
-                    discount = float(price.replace("$", "").replace(",", ""))
-                    items[-1]["price"] += discount
-                    items[-1]["description"] += " (discount applied)"
-                    st.text(f"Applied discount {discount} to previous item: {items[-1]}")
-                    i += 3
-                    continue
-                except ValueError:
-                    st.text(f"Invalid discount price: {price}")
-                    i += 1
-                    continue
-            else:
-                st.text("Warning: discount appeared before any item")
-                i += 1
-                continue
-
-        try:
-            float_price = float(price.replace("$", "").replace(",", ""))
-            item = {
-                "id": str(uuid.uuid4()),
-                "description": desc,
-                "price": float_price
-            }
-            st.text(f"Matched: {item}")
-            items.append(item)
-            i += 3
-        except ValueError:
-            st.text(f"No match: {desc}, {qty}, {price}")
             i += 1
 
     return items
