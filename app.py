@@ -7,13 +7,62 @@ import io
 from fpdf import FPDF
 
 # 🔐 Google credentials from st.secrets
-import json
-credentials_json = json.loads(st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON", "{}"))
-credentials = service_account.Credentials.from_service_account_info(credentials_json)
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
+)
 
 # 🔥 Confirm new parser is in use
 def parse_items(text):
-    st.markdown("🔥 **Running updated parser with discount logic**")
+        st.markdown("🔥 **Running SMART parser with backtracking discount logic**")
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    items = []
+    discount_keywords = ["discount", "happy hour"]
+
+    st.markdown("### Debug: Parsed Lines")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        try:
+            # Try parsing as a float – this is the PRICE
+            price = float(line.replace("$", "").replace(",", ""))
+            if price < 0:
+                # It's a discount, apply to previous item
+                if items:
+                    items[-1]["price"] += price  # price is negative
+                    items[-1]["description"] += " (discount applied)"
+                    st.text(f"Applied discount {price} to: {items[-1]}")
+                else:
+                    st.text(f"⚠️ Discount {price} found but no previous item to apply to")
+                i += 1
+                continue
+
+            # Look backward for a valid description (skip quantities)
+            j = i - 1
+            while j >= 0:
+                back_line = lines[j]
+                try:
+                    maybe_qty = float(back_line)
+                    j -= 1
+                except ValueError:
+                    description = back_line
+                    break
+            else:
+                description = f"Item {i}"  # fallback
+
+            item = {
+                "id": str(uuid.uuid4()),
+                "description": description,
+                "price": price
+            }
+            items.append(item)
+            st.text(f"Matched: {item}")
+            i += 1
+        except ValueError:
+            st.text(f"Skipped: {line}")
+            i += 1
+
+    return items
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     items = []
     skip_keywords = ["subtotal", "total", "tax", "tip", "change", "cash", "payment", "visa", "mastercard"]
