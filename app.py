@@ -6,8 +6,11 @@ from PIL import Image
 import uuid
 
 # Load credentials from Streamlit secrets
+import json
+
 credentials = service_account.Credentials.from_service_account_info(
-    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
+    json.loads(
+    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
 )
 
 client = vision.ImageAnnotatorClient(credentials=credentials)
