@@ -7,9 +7,9 @@ import io
 from fpdf import FPDF
 
 # 🔐 Google credentials from st.secrets
-credentials = service_account.Credentials.from_service_account_info(
-    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
-)
+import json
+credentials_json = json.loads(st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON", "{}"))
+credentials = service_account.Credentials.from_service_account_info(credentials_json)
 
 # 🔥 Confirm new parser is in use
 def parse_items(text):
