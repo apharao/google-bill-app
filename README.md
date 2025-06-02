@@ -1,15 +1,21 @@
-
 # Restaurant Bill Splitter
 
-This app lets you upload a photo of a restaurant receipt and helps split the bill among multiple people.
+A Streamlit app that uses Google Cloud Vision OCR to extract items from restaurant receipts and helps split the bill.
 
 ## Features
-- OCR using Google Cloud Vision
-- Simplified parsing with optional quantity detection
-- Manual item correction
+
+- Upload and OCR receipt images
+- Manual or intelligent parsing
+- Tax and tip per person
+- Export summary to PDF
 
 ## Deployment
-Make sure your Google Cloud service account credentials are stored in `st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]`.
+
+To run locally:
+```bash
+streamlit run app.py
+```
 
 ## License
-Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+
+This project is licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License.
