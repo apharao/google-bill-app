@@ -46,7 +46,7 @@ if uploaded_file:
     except:
         pass
 
-    st.image(image, caption="Uploaded Receipt", use_column_width=True)
+    st.image(image, caption="Uploaded Receipt", use_container_width=True)
 
     # OCR
     img_byte_arr = io.BytesIO()
