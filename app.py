@@ -36,6 +36,7 @@ with st.form("person_form", clear_on_submit=False):
     finalize = col2.form_submit_button("Finalize Person")
 
     if add_item:
+        st.session_state.item_buffer = {'description': '', 'price': 0.0}
         if desc and price > 0:
             st.session_state.current_items.append({"description": desc, "price": price})
             st.session_state.item_buffer = {"description": "", "price": 0.0}
