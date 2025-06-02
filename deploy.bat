@@ -2,7 +2,7 @@
 SETLOCAL
 
 REM === CONFIG ===
-SET "ZIP_FILE=C:\Users\alexi\Downloads\simplified_bill_splitter.zip"
+SET "ZIP_FILE=C:\Users\alexi\Downloads\restaurant_bill_splitter.zip"
 SET "TEMP_DIR=%~dp0temp_extract"
 
 REM === CLEANUP PREVIOUS TEMP ===
