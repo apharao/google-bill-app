@@ -8,6 +8,37 @@ import re
 from fpdf import FPDF
 
 # --- GOOGLE CLOUD VISION SETUP ---
+
+
+def parse_items(text):
+    import uuid
+    lines = text.split("\n")
+    items = []
+    pattern = re.compile(r"(.+?)\s+\$?(-?\d+\.\d{2})$")
+    discount_pattern = re.compile(r"(discount.*?-?\$\d+\.\d{2})", re.IGNORECASE)
+    skip_keywords = ["subtotal", "total", "tax", "tip", "change", "cash", "payment", "visa", "mastercard"]
+
+    st.markdown("### Debug: Parsed Lines")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if any(word in stripped.lower() for word in skip_keywords):
+            st.text(f"Skipping: {stripped}")
+            continue
+        match = pattern.search(stripped)
+        if match:
+            desc, price = match.groups()
+            item = {"id": str(uuid.uuid4()), "description": desc.strip(), "price": float(price)}
+            st.text(f"Matched: {item}")
+            items.append(item)
+        elif discount_pattern.search(stripped) and items:
+            discount = float(re.findall(r"-?\$([\d\.]+)", stripped)[-1])
+            items[-1]["price"] -= discount
+            items[-1]["description"] += " (discount applied)"
+            st.text(f"Applied discount to: {items[-1]}")
+        else:
+            st.text(f"No match: {stripped}")
+    return items
+
 if "GOOGLE_APPLICATION_CREDENTIALS_JSON" not in st.secrets:
     st.error("Google credentials not found in Streamlit secrets.")
     st.stop()
@@ -66,36 +97,6 @@ if uploaded_file:
     # --- STEP 2: Parse and Display Items ---
     
     
-def parse_items(text):
-    import uuid
-    lines = text.split("\n")
-    items = []
-    pattern = re.compile(r"(.+?)\s+\$?(-?\d+\.\d{2})$")
-    discount_pattern = re.compile(r"(discount.*?-?\$\d+\.\d{2})", re.IGNORECASE)
-    skip_keywords = ["subtotal", "total", "tax", "tip", "change", "cash", "payment", "visa", "mastercard"]
-
-    st.markdown("### Debug: Parsed Lines")
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if any(word in stripped.lower() for word in skip_keywords):
-            st.text(f"Skipping: {stripped}")
-            continue
-        match = pattern.search(stripped)
-        if match:
-            desc, price = match.groups()
-            item = {"id": str(uuid.uuid4()), "description": desc.strip(), "price": float(price)}
-            st.text(f"Matched: {item}")
-            items.append(item)
-        elif discount_pattern.search(stripped) and items:
-            discount = float(re.findall(r"-?\$([\d\.]+)", stripped)[-1])
-            items[-1]["price"] -= discount
-            items[-1]["description"] += " (discount applied)"
-            st.text(f"Applied discount to: {items[-1]}")
-        else:
-            st.text(f"No match: {stripped}")
-    return items
-
-
 st.session_state.parsed_items = parse_items(editable_text)
 
 st.subheader("Parsed Items")
