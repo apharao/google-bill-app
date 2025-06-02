@@ -12,8 +12,12 @@ if "tax_rate" not in st.session_state:
     st.session_state.tax_rate = 0.0
 if "current_items" not in st.session_state:
     st.session_state.current_items = []
-if "item_buffer" not in st.session_state:
-    st.session_state.item_buffer = {"description": "", "price": 0.0}
+
+# Buffer fields for new item entry
+if "item_description" not in st.session_state:
+    st.session_state.item_description = ""
+if "item_price" not in st.session_state:
+    st.session_state.item_price = 0.0
 
 st.title("Bill Splitter with Tax & Tip")
 
@@ -28,18 +32,18 @@ with st.form("person_form", clear_on_submit=False):
     name = st.text_input("Enter person's name")
     tip_percent = st.number_input("Enter tip percentage for this person", min_value=0.0, step=0.01)
 
-    desc = st.text_input("Item description", value=st.session_state.item_buffer["description"])
-    price = st.number_input("Item price", value=st.session_state.item_buffer["price"], step=0.01)
+    desc = st.text_input("Item description", key="item_description")
+    price = st.number_input("Item price", step=0.01, key="item_price")
 
     col1, col2 = st.columns(2)
     add_item = col1.form_submit_button("Add Item")
     finalize = col2.form_submit_button("Finalize Person")
 
     if add_item:
-        st.session_state.item_buffer = {'description': '', 'price': 0.0}
         if desc and price > 0:
             st.session_state.current_items.append({"description": desc, "price": price})
-            st.session_state.item_buffer = {"description": "", "price": 0.0}
+            st.session_state.item_description = ""
+            st.session_state.item_price = 0.0
             st.rerun()
 
     if finalize and name and st.session_state.current_items:
@@ -50,7 +54,8 @@ with st.form("person_form", clear_on_submit=False):
         })
         st.session_state.current_person_index += 1
         st.session_state.current_items.clear()
-        st.session_state.item_buffer = {"description": "", "price": 0.0}
+        st.session_state.item_description = ""
+        st.session_state.item_price = 0.0
         st.rerun()
 
 # Show live items
@@ -95,7 +100,7 @@ if len(st.session_state.people_data) > 0 and st.button("Generate PDF Summary"):
     effective_tip = (total_tip / total_item_cost * 100) if total_item_cost > 0 else 0.0
     pdf.cell(200, 10, f"Effective Tip Percentage: {effective_tip:.2f}%", ln=True)
 
-    output_path = "/mnt/data/simplified_dynamic_bill_summary.pdf"
+    output_path = "/mnt/data/simplified_dynamic_bill_summary_resetfix.pdf"
     pdf.output(output_path)
     st.success("PDF Generated!")
     st.download_button("Download PDF", data=open(output_path, "rb"), file_name="bill_summary.pdf")
