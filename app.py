@@ -39,7 +39,7 @@ with st.form("person_form", clear_on_submit=False):
         if desc and price > 0:
             st.session_state.current_items.append({"description": desc, "price": price})
             st.session_state.item_buffer = {"description": "", "price": 0.0}
-            st.experimental_rerun()
+            st.rerun()
 
     if finalize and name and st.session_state.current_items:
         st.session_state.people_data.append({
@@ -50,7 +50,7 @@ with st.form("person_form", clear_on_submit=False):
         st.session_state.current_person_index += 1
         st.session_state.current_items.clear()
         st.session_state.item_buffer = {"description": "", "price": 0.0}
-        st.experimental_rerun()
+        st.rerun()
 
 # Show live items
 if st.session_state.current_items:
