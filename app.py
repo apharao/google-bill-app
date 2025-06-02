@@ -1,109 +1,121 @@
+
 import streamlit as st
-from google.cloud import vision
 from google.oauth2 import service_account
+from google.cloud import vision
 import io
-from PIL import Image
 import uuid
 
-# Load credentials from Streamlit secrets
-import json
+st.set_page_config(page_title="Restaurant Bill Splitter", layout="wide")
 
+# --- Auth ---
 credentials = service_account.Credentials.from_service_account_info(
-    json.loads(
-    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
 )
-
 client = vision.ImageAnnotatorClient(credentials=credentials)
 
-st.title("📷 Restaurant Bill Splitter (Structured OCR Mode)")
+# --- Helper to call OCR ---
+def extract_text(image_bytes):
+    image = vision.Image(content=image_bytes)
+    response = client.document_text_detection(image=image)
+    return response.full_text_annotation, response
 
-uploaded_file = st.file_uploader("Upload receipt image", type=["png", "jpg", "jpeg"])
-force_mode = st.checkbox("Force structured parsing if header not found")
+# --- OCR Upload Step ---
+st.title("📸 Restaurant Receipt OCR + Bill Splitter")
+uploaded_file = st.file_uploader("Upload a restaurant receipt (JPG or PNG)", type=["jpg", "jpeg", "png"])
+
 if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded receipt", use_container_width=True)
+    image_bytes = uploaded_file.read()
+    st.image(image_bytes, caption="Uploaded Receipt", use_container_width=True)
 
-    # Read image bytes
-    content = uploaded_file.read()
-    image_context = vision.Image(content=content)
-    response = client.document_text_detection(image=image_context)
+    with st.spinner("Extracting text..."):
+        ocr_text, raw_response = extract_text(image_bytes)
+        all_words = [word for page in raw_response.pages for block in page.blocks
+                     for para in block.paragraphs for word in para.words]
 
-    words = []
-    for page in response.full_text_annotation.pages:
-        for block in page.blocks:
-            for paragraph in block.paragraphs:
-                for word in paragraph.words:
-                    text = ''.join([symbol.text for symbol in word.symbols])
-                    vertices = word.bounding_box.vertices
-                    x = int(sum([v.x for v in vertices]) / 4)
-                    y = int(sum([v.y for v in vertices]) / 4)
-                    words.append({"text": text, "x": x, "y": y})
+    editable_text = st.text_area("📝 Editable OCR Text", value=ocr_text.text, height=300)
 
-    # Sort by y then x
-    words.sort(key=lambda w: (w["y"], w["x"]))
+    # --- New Parsing Logic: Structured or Line-based ---
+    fallback_to_lines = st.checkbox("Fallback to line-based parsing")
+    st.markdown("↓ Parsed Items from OCR:")
 
-    # Cluster into rows based on y-axis
-    rows = []
-    current_row = []
-    threshold = 15
-    for word in words:
-        if not current_row:
-            current_row.append(word)
-            continue
-        if abs(word["y"] - current_row[-1]["y"]) < threshold:
-            current_row.append(word)
-        else:
-            rows.append(current_row)
-            current_row = [word]
-    if current_row:
-        rows.append(current_row)
-
-    # Attempt to identify header row
-    header = None
-    for row in rows:
-        joined = ' '.join([w["text"].lower() for w in row])
-        if "description" in joined and "price" in joined:
-            header = row
-            break
-
-    if header or force_mode:
-        st.success("Table header detected. Parsing structured rows...")
-        # Estimate column x-positions
-        header_dicts = [{"text": "".join([s.text for s in w.symbols]), "x": int(sum(v.x for v in w.bounding_box.vertices) / 4), "y": int(sum(v.y for v in w.bounding_box.vertices) / 4)} for w in header]
-header_sorted = sorted(header_dicts, key=lambda w: w["x"])
-        col_x = [w["x"] for w in header_sorted]
-        col_labels = [w["text"].lower() for w in header_sorted]
-
-        def get_column(x):
-            distances = [abs(x - cx) for cx in col_x]
-            return col_labels[distances.index(min(distances))]
-
-        # Build item list
+    def parse_items_from_ocr(text, all_words, fallback=False):
         items = []
-        for row in rows:
-            if row == header or len(row) < 2:
-                continue
-            cols = {"description": "", "qty": "", "price": ""}
-            for word in row:
-                col = get_column(word["x"])
-                if col in cols:
-                    cols[col] += word["text"] + " "
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+
+        if fallback:
+            st.write("⚠️ Forcing fallback to line-based parsing.")
+            for line in lines:
+                try:
+                    if "-" in line:
+                        parts = line.rsplit("-", 1)
+                    else:
+                        parts = line.rsplit(" ", 1)
+                    if len(parts) == 2:
+                        desc = parts[0].strip()
+                        price = float(parts[1].replace("$", ""))
+                        items.append({"id": str(uuid.uuid4()), "description": desc, "price": price})
+                except:
+                    pass
+            return items
+
+        # Attempt structured parsing
+        header = None
+        for line in lines[:5]:
+            if "description" in line.lower() and "price" in line.lower():
+                header = line
+                break
+
+        if not header:
+            st.write("⚠️ No explicit header found. Attempting structured layout anyway...")
+
+        # Convert all_words to dicts for processing
+        word_dicts = []
+        for word in all_words:
+            text = "".join([s.text for s in word.symbols])
+            x = sum([v.x for v in word.bounding_box.vertices]) / 4
+            y = sum([v.y for v in word.bounding_box.vertices]) / 4
+            word_dicts.append({"text": text, "x": x, "y": y})
+
+        header_dicts = []
+        if header:
+            header_words = header.split()
+            header_dicts = [{"text": h, "x": 0, "y": 0} for h in header_words]
+
+        header_sorted = sorted(header_dicts, key=lambda w: w["x"]) if header_dicts else []
+
+        if not header_sorted:
+            header_sorted = [{"text": "Description", "x": 0}, {"text": "Qty", "x": 100}, {"text": "Price", "x": 200}]
+
+        col_x = [w["x"] for w in header_sorted]
+
+        rows = {}
+        for word in word_dicts:
+            y_key = round(word["y"] / 10) * 10
+            rows.setdefault(y_key, []).append(word)
+
+        for y, words in rows.items():
+            row = ["", "", ""]
+            for word in words:
+                if len(col_x) >= 3:
+                    if word["x"] < col_x[1]:
+                        row[0] += word["text"] + " "
+                    elif word["x"] < col_x[2]:
+                        row[1] += word["text"] + " "
+                    else:
+                        row[2] += word["text"] + " "
             try:
-                price = float(cols["price"].strip())
-                desc = cols["description"].strip()
-                items.append({
-                    "id": str(uuid.uuid4()),
-                    "description": desc,
-                    "price": price
-                })
+                desc = row[0].strip()
+                price = float(row[2].strip().replace("$", ""))
+                items.append({"id": str(uuid.uuid4()), "description": desc, "price": price})
             except:
                 continue
 
-        st.subheader("🧾 Parsed Items")
-        if not items:
-            st.warning("No items parsed. Try re-scanning or use fallback mode.")
-        else:
-            for item in items:
-                st.write(f'{item["description"]} - ${item["price"]:.2f}')
+        return items
+
+    parsed_items = parse_items_from_ocr(editable_text, all_words, fallback=fallback_to_lines)
+
+    if parsed_items:
+        for item in parsed_items:
+            st.markdown(f"✅ **{item['description']}** - ${item['price']:.2f}")
     else:
-        st.error("Could not detect table header. Consider enabling fallback mode or using a clearer receipt image.")
+        st.warning("⚠️ No items were parsed. Try editing the OCR text or enabling fallback mode.")
