@@ -6,11 +6,8 @@ from PIL import Image
 import uuid
 
 # Load credentials from Streamlit secrets
-import json
-
 credentials = service_account.Credentials.from_service_account_info(
-    json.loads(
-    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+    st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
 )
 
 client = vision.ImageAnnotatorClient(credentials=credentials)
@@ -18,6 +15,7 @@ client = vision.ImageAnnotatorClient(credentials=credentials)
 st.title("📷 Restaurant Bill Splitter (Structured OCR Mode)")
 
 uploaded_file = st.file_uploader("Upload receipt image", type=["png", "jpg", "jpeg"])
+force_mode = st.checkbox("Force structured parsing if header not found")
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded receipt", use_container_width=True)
@@ -65,7 +63,7 @@ if uploaded_file:
             header = row
             break
 
-    if header:
+    if header or force_mode:
         st.success("Table header detected. Parsing structured rows...")
         # Estimate column x-positions
         header_sorted = sorted(header, key=lambda w: w["x"])
