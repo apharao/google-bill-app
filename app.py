@@ -1,17 +1,26 @@
-# main.py
+
 import streamlit as st
 from google.cloud import vision
 from google.oauth2 import service_account
 from PIL import Image, ExifTags
 import io
 import re
+import json
+import uuid
 from fpdf import FPDF
 
 # --- GOOGLE CLOUD VISION SETUP ---
+if "GOOGLE_APPLICATION_CREDENTIALS_JSON" not in st.secrets:
+    st.error("Google credentials not found in Streamlit secrets.")
+    st.stop()
 
+credentials = service_account.Credentials.from_service_account_info(
+    json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+)
+vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 
+# --- FUNCTION: PARSE ITEMS ---
 def parse_items(text):
-    import uuid
     lines = text.split("\n")
     items = []
     pattern = re.compile(r"(.+?)\s+\$?(-?\d+\.\d{2})$")
@@ -39,16 +48,6 @@ def parse_items(text):
             st.text(f"No match: {stripped}")
     return items
 
-if "GOOGLE_APPLICATION_CREDENTIALS_JSON" not in st.secrets:
-    st.error("Google credentials not found in Streamlit secrets.")
-    st.stop()
-
-import json
-credentials = service_account.Credentials.from_service_account_info(
-    json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
-)
-vision_client = vision.ImageAnnotatorClient(credentials=credentials)
-
 # --- SESSION STATE ---
 if "parsed_items" not in st.session_state:
     st.session_state.parsed_items = []
@@ -62,7 +61,6 @@ uploaded_file = st.file_uploader("Upload a photo of your receipt", type=["png", 
 if uploaded_file:
     image = Image.open(uploaded_file)
 
-    # Fix EXIF orientation
     try:
         for orientation in ExifTags.TAGS.keys():
             if ExifTags.TAGS[orientation] == 'Orientation':
@@ -79,7 +77,6 @@ if uploaded_file:
 
     st.image(image, caption="Uploaded Receipt", use_container_width=True)
 
-    # OCR
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PNG')
     content = img_byte_arr.getvalue()
@@ -94,21 +91,19 @@ if uploaded_file:
     raw_text = texts[0].description
     editable_text = st.text_area("OCR Output - Edit if needed", raw_text, height=300)
 
-    # --- STEP 2: Parse and Display Items ---
-    
-    
-st.session_state.parsed_items = parse_items(editable_text)
+    st.session_state.parsed_items = parse_items(editable_text)
 
-st.subheader("Parsed Items")
-if st.session_state.parsed_items:
-    for item in st.session_state.parsed_items:
-        st.write(f"{item['description']} - ${item['price']:.2f}")
-else:
-    st.warning("No items were parsed. Check the debug output above.")
+    st.subheader("Parsed Items")
+    if st.session_state.parsed_items:
+        for item in st.session_state.parsed_items:
+            st.write(f"{item['description']} - ${item['price']:.2f}")
+    else:
+        st.warning("No items were parsed. Check the debug output above.")
+
+# --- STEP 3: Assign Items ---
 st.subheader("Assign Items")
-
 assigned_ids = {item["id"] for v in st.session_state.assignments.values() for item in v["items"]}
-unassigned_items = [i for i in st.session_state.parsed_items if i["id"] not in assigned_ids] if "parsed_items" in st.session_state else []
+unassigned_items = [i for i in st.session_state.parsed_items if i["id"] not in assigned_ids] if st.session_state.parsed_items else []
 
 name = st.text_input("Name", key="name_input")
 tax_rate = st.number_input("Tax %", min_value=0.0, max_value=100.0, step=0.1, key="tax_input")
@@ -127,18 +122,9 @@ if st.button("Assign to Person") and name and selected:
     if name not in st.session_state.assignments:
         st.session_state.assignments[name] = {"tax": tax_rate, "tip": tip_rate, "items": []}
     st.session_state.assignments[name]["items"].extend(selected)
-# Unassign option
-    st.subheader("Current Assignments")
-    for person, data in st.session_state.assignments.items():
-        st.markdown(f"**{person}**")
-        for item in data["items"]:
-            if st.button(f"Unassign {item['description']} from {person}", key=f"unassign_{person}_{item['description']}"):
-                data["items"].remove(item)
-
 
 # --- STEP 3B: Current Assignments and Unassign ---
 st.subheader("Current Assignments")
-
 for person, data in st.session_state.assignments.items():
     st.markdown(f"**{person}**")
     for item in data["items"]:
@@ -150,13 +136,12 @@ for person, data in st.session_state.assignments.items():
                 data["items"].remove(item)
 
 # --- STEP 4: Manual Editing ---
-if st.session_state.parsed_items:
-    st.subheader("Edit Items")
-    for item in st.session_state.parsed_items:
-        item['description'] = st.text_input(f"Edit description:", value=item['description'], key=f"desc_{item['description']}")
-        item['price'] = st.number_input(f"Edit price:", value=item['price'], key=f"price_{item['description']}")
+st.subheader("Edit Items")
+for item in st.session_state.parsed_items:
+    item['description'] = st.text_input(f"Edit description:", value=item['description'], key=f"desc_{item['id']}")
+    item['price'] = st.number_input(f"Edit price:", value=item['price'], key=f"price_{item['id']}")
 
-# --- STEP 5 & 6: Calculations and Export ---
+# --- STEP 5 & 6: Export ---
 if st.button("Finish and Export PDF"):
     pdf = FPDF()
     pdf.add_page()
@@ -166,12 +151,10 @@ if st.button("Finish and Export PDF"):
         pdf.set_font(style="B")
         pdf.cell(200, 10, txt=person, ln=True)
         pdf.set_font(style="")
-
         subtotal = sum(item['price'] for item in data['items'])
         tax = subtotal * (data['tax'] / 100)
         tip = (subtotal + tax) * (data['tip'] / 100)
         total = subtotal + tax + tip
-
         for item in data['items']:
             pdf.cell(200, 10, txt=f"{item['description']} - ${item['price']:.2f}", ln=True)
         pdf.cell(200, 10, txt=f"Subtotal: ${subtotal:.2f}", ln=True)
@@ -179,3 +162,7 @@ if st.button("Finish and Export PDF"):
         pdf.cell(200, 10, txt=f"Tip ({data['tip']}%): ${tip:.2f}", ln=True)
         pdf.cell(200, 10, txt=f"Total: ${total:.2f}", ln=True)
         pdf.ln(10)
+
+    pdf_output = io.BytesIO()
+    pdf.output(pdf_output)
+    st.download_button(label="Download PDF Summary", data=pdf_output.getvalue(), file_name="bill_summary.pdf", mime="application/pdf")
