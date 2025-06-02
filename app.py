@@ -32,9 +32,9 @@ if st.session_state.tax_set:
 
     with st.form("person_form", clear_on_submit=True):
         if "current_name" not in st.session_state:
-        st.session_state.current_name = ""
-    name = st.text_input("Enter person's name", value=st.session_state.current_name)
-    st.session_state.current_name = name
+    st.session_state.current_name = ""
+name = st.text_input("Enter person's name", value=st.session_state.current_name)
+st.session_state.current_name = name
         tip_percent = st.number_input("Tip percentage for this person", min_value=0.0, step=0.01)
 
         desc = st.text_input("Item description", placeholder="e.g. Tacos")
