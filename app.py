@@ -1,4 +1,5 @@
 import streamlit as st
+from random import choice
 
 # Initialize session state
 if "question_number" not in st.session_state:
@@ -6,9 +7,10 @@ if "question_number" not in st.session_state:
     st.session_state.questions = []
     st.session_state.answers = []
     st.session_state.guess_ready = False
+    st.session_state.awaiting_response = True
 
-# Example question bank
-default_questions = [
+# Question bank
+questions = [
     "Is it a living thing?",
     "Can it be found indoors?",
     "Is it man-made?",
@@ -32,30 +34,35 @@ default_questions = [
     "Would you find it in a car?"
 ]
 
+# UI layout
 st.set_page_config(page_title="🧠 21 Questions AI Guesser", page_icon="🧩")
 st.title("🧠 21 Questions - AI Guesses Your Word")
+st.markdown("Think of an object. I’ll try to guess it by asking 21 yes/no/maybe questions.")
 
-st.markdown("Think of an object, but don't tell me. I will ask you up to 21 yes/no questions to guess it!")
+if st.session_state.question_number <= 21:
+    q_idx = st.session_state.question_number - 1
+    st.subheader(f"Question {st.session_state.question_number}")
+    st.write(f"**{questions[q_idx]}**")
 
-if st.session_state["question_number"] <= 21:
-    current_q = default_questions[st.session_state["question_number"] - 1]
-    st.subheader(f"Question {st.session_state['question_number']}:")
-    st.markdown(f"**{current_q}**")
-
-    response = st.radio("Your answer:", ["Yes", "No", "Maybe"], key=f"q{st.session_state['question_number']}")
+    response = st.radio("Your answer:", ["", "Yes", "No", "Maybe"], key=f"response_{st.session_state.question_number}")
 
     if st.button("Next"):
-        st.session_state["questions"].append(current_q)
-        st.session_state["answers"].append(response)
-        st.session_state["question_number"] += 1
-        if st.session_state["question_number"] > 21:
-            st.session_state["guess_ready"] = True
-        st.experimental_rerun()
+        if response == "":
+            st.warning("Please select an answer before continuing.")
+        else:
+            st.session_state.questions.append(questions[q_idx])
+            st.session_state.answers.append(response)
+            st.session_state.question_number += 1
+
+            if st.session_state.question_number > 21:
+                st.session_state.guess_ready = True
+
+            st.experimental_rerun()
+
 else:
     st.success("I've asked 21 questions. Time to guess your word!")
 
 if st.session_state.get("guess_ready", False):
-    from random import choice
     sample_guesses = ["A phone", "A cat", "A book", "A jacket", "A blender", "A tree", "A television", "A backpack"]
     st.subheader("🤔 My Guess Is...")
     st.header(choice(sample_guesses))
