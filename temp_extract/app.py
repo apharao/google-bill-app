@@ -1,57 +1,119 @@
 import streamlit as st
 from datetime import datetime
-from pytz import timezone
-from flatlib.chart import Chart
-from flatlib.datetime import Datetime
-from flatlib.geopos import GeoPos
-from flatlib import const
 
-# Function to generate birth chart
-def get_astrological_profile(date, time, tz, latitude, longitude):
-    dt = Datetime(f"{date} {time}", tz)
-    pos = GeoPos(latitude, longitude)
-    chart = Chart(dt, pos)
+# Sign ranges (approximate)
+ZODIAC_SIGNS = [
+    ("Capricorn", (12, 22), (1, 19)),
+    ("Aquarius", (1, 20), (2, 18)),
+    ("Pisces", (2, 19), (3, 20)),
+    ("Aries", (3, 21), (4, 19)),
+    ("Taurus", (4, 20), (5, 20)),
+    ("Gemini", (5, 21), (6, 20)),
+    ("Cancer", (6, 21), (7, 22)),
+    ("Leo", (7, 23), (8, 22)),
+    ("Virgo", (8, 23), (9, 22)),
+    ("Libra", (9, 23), (10, 22)),
+    ("Scorpio", (10, 23), (11, 21)),
+    ("Sagittarius", (11, 22), (12, 21)),
+]
 
-    sun = chart.get(const.SUN)
-    moon = chart.get(const.MOON)
-    asc = chart.get(const.ASC)
+ZODIAC_INFO = {
+    "Aries": {
+        "Element": "Fire",
+        "Modality": "Cardinal",
+        "Ruling Planet": "Mars",
+        "Traits": "Bold, energetic, and competitive. Natural leaders who thrive on challenges."
+    },
+    "Taurus": {
+        "Element": "Earth",
+        "Modality": "Fixed",
+        "Ruling Planet": "Venus",
+        "Traits": "Reliable, sensual, and grounded. Lovers of beauty, comfort, and stability."
+    },
+    "Gemini": {
+        "Element": "Air",
+        "Modality": "Mutable",
+        "Ruling Planet": "Mercury",
+        "Traits": "Curious, witty, and adaptable. Masters of communication and duality."
+    },
+    "Cancer": {
+        "Element": "Water",
+        "Modality": "Cardinal",
+        "Ruling Planet": "Moon",
+        "Traits": "Nurturing, emotional, and protective. Deeply connected to home and family."
+    },
+    "Leo": {
+        "Element": "Fire",
+        "Modality": "Fixed",
+        "Ruling Planet": "Sun",
+        "Traits": "Charismatic, proud, and dramatic. Natural performers with big hearts."
+    },
+    "Virgo": {
+        "Element": "Earth",
+        "Modality": "Mutable",
+        "Ruling Planet": "Mercury",
+        "Traits": "Analytical, practical, and detail-oriented. Helpers with high standards."
+    },
+    "Libra": {
+        "Element": "Air",
+        "Modality": "Cardinal",
+        "Ruling Planet": "Venus",
+        "Traits": "Charming, fair, and diplomatic. Seekers of beauty, harmony, and justice."
+    },
+    "Scorpio": {
+        "Element": "Water",
+        "Modality": "Fixed",
+        "Ruling Planet": "Pluto (traditionally Mars)",
+        "Traits": "Intense, secretive, and transformative. Powerful emotional depth and willpower."
+    },
+    "Sagittarius": {
+        "Element": "Fire",
+        "Modality": "Mutable",
+        "Ruling Planet": "Jupiter",
+        "Traits": "Adventurous, optimistic, and philosophical. Freedom-lovers and truth-seekers."
+    },
+    "Capricorn": {
+        "Element": "Earth",
+        "Modality": "Cardinal",
+        "Ruling Planet": "Saturn",
+        "Traits": "Disciplined, ambitious, and mature. Masters of long-term planning and responsibility."
+    },
+    "Aquarius": {
+        "Element": "Air",
+        "Modality": "Fixed",
+        "Ruling Planet": "Uranus (traditionally Saturn)",
+        "Traits": "Innovative, rebellious, and humanitarian. Thinkers ahead of their time."
+    },
+    "Pisces": {
+        "Element": "Water",
+        "Modality": "Mutable",
+        "Ruling Planet": "Neptune (traditionally Jupiter)",
+        "Traits": "Empathetic, dreamy, and spiritual. Artists and healers with boundless compassion."
+    },
+}
 
-    profile = {
-        "Sun Sign": f"{sun.sign} in {sun.house} house",
-        "Moon Sign": f"{moon.sign} in {moon.house} house",
-        "Rising Sign (Ascendant)": f"{asc.sign}"
-    }
+def get_sign(month, day):
+    for sign, start, end in ZODIAC_SIGNS:
+        if (month == start[0] and day >= start[1]) or (month == end[0] and day <= end[1]):
+            return sign
+    return "Capricorn"  # default fallback
 
-    return profile
-
-# App UI
-st.set_page_config(page_title="Advanced Astrology Profile", page_icon="✨")
-st.title("🔮 Enlightened Astrological Reader")
-
-st.markdown("Enter your birth details for an in-depth astrological reading:")
+# Streamlit App
+st.set_page_config(page_title="Zodiac Sign Reader", page_icon="🌌")
+st.title("🌟 Enlightened Zodiac Profile")
+st.markdown("Enter your date of birth for a detailed astrological breakdown:")
 
 name = st.text_input("Your Name")
-birth_date = st.date_input("Date of Birth")
-birth_time = st.time_input("Time of Birth (24h format)")
-timezone_str = st.text_input("Time Zone (e.g. 'US/Pacific')", "UTC")
-latitude = st.text_input("Latitude (e.g. 34.0522)", "0.0")
-longitude = st.text_input("Longitude (e.g. -118.2437)", "0.0")
+birth_date = st.date_input("Your Date of Birth")
 
-if st.button("Generate My Profile"):
-    try:
-        profile = get_astrological_profile(
-            birth_date.strftime("%Y/%m/%d"),
-            birth_time.strftime("%H:%M"),
-            timezone_str,
-            latitude,
-            longitude
-        )
-        st.success(f"Astrological Profile for {name or 'You'}")
-        for key, value in profile.items():
-            st.subheader(key)
-            st.write(value)
+if st.button("Read My Stars"):
+    sign = get_sign(birth_date.month, birth_date.day)
+    info = ZODIAC_INFO[sign]
 
-        st.markdown("✨ *More interpretations and planetary alignments coming soon...*")
+    st.subheader(f"🌞 Sun Sign: {sign}")
+    st.write(f"**Element:** {info['Element']}")
+    st.write(f"**Modality:** {info['Modality']}")
+    st.write(f"**Ruling Planet:** {info['Ruling Planet']}")
+    st.write(f"**Traits:** {info['Traits']}")
 
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+    st.markdown("✨ *More features like love compatibility and numerology coming soon...*")
