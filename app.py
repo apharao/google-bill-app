@@ -1,27 +1,57 @@
 import streamlit as st
+from datetime import datetime
+from pytz import timezone
+from flatlib.chart import Chart
+from flatlib.datetime import Datetime
+from flatlib.geopos import GeoPos
+from flatlib import const
 
-# Astrological profile database (very basic for now)
-astro_profiles = {
-    "Aries": "Energetic, adventurous, and passionate. Natural leaders with a bold spirit.",
-    "Taurus": "Reliable, patient, and grounded. Loves beauty and comfort.",
-    "Gemini": "Curious, witty, and communicative. Adaptable and expressive.",
-    "Cancer": "Emotional, nurturing, and protective. Values home and family.",
-    "Leo": "Confident, charismatic, and generous. Natural performers and leaders.",
-    "Virgo": "Analytical, practical, and detail-oriented. Loves to serve and improve.",
-    "Libra": "Charming, fair, and diplomatic. Loves harmony and aesthetics.",
-    "Scorpio": "Intense, mysterious, and powerful. Emotionally deep and determined.",
-    "Sagittarius": "Optimistic, freedom-loving, and philosophical. Seeks truth and adventure.",
-    "Capricorn": "Disciplined, responsible, and ambitious. Values tradition and success.",
-    "Aquarius": "Innovative, independent, and humanitarian. Marches to the beat of their own drum.",
-    "Pisces": "Empathetic, imaginative, and artistic. Deeply intuitive and spiritual.",
-}
+# Function to generate birth chart
+def get_astrological_profile(date, time, tz, latitude, longitude):
+    dt = Datetime(f"{date} {time}", tz)
+    pos = GeoPos(latitude, longitude)
+    chart = Chart(dt, pos)
 
-# Streamlit UI
-st.set_page_config(page_title="Astrological Profile App", page_icon="✨")
-st.title("🔮 Discover Your Astrological Profile")
+    sun = chart.get(const.SUN)
+    moon = chart.get(const.MOON)
+    asc = chart.get(const.ASC)
 
-sign = st.selectbox("Choose your zodiac sign:", list(astro_profiles.keys()))
+    profile = {
+        "Sun Sign": f"{sun.sign} in {sun.house} house",
+        "Moon Sign": f"{moon.sign} in {moon.house} house",
+        "Rising Sign (Ascendant)": f"{asc.sign}"
+    }
 
-if sign:
-    st.subheader(f"♈ Your Astrological Profile for {sign}")
-    st.write(astro_profiles[sign])
+    return profile
+
+# App UI
+st.set_page_config(page_title="Advanced Astrology Profile", page_icon="✨")
+st.title("🔮 Enlightened Astrological Reader")
+
+st.markdown("Enter your birth details for an in-depth astrological reading:")
+
+name = st.text_input("Your Name")
+birth_date = st.date_input("Date of Birth")
+birth_time = st.time_input("Time of Birth (24h format)")
+timezone_str = st.text_input("Time Zone (e.g. 'US/Pacific')", "UTC")
+latitude = st.text_input("Latitude (e.g. 34.0522)", "0.0")
+longitude = st.text_input("Longitude (e.g. -118.2437)", "0.0")
+
+if st.button("Generate My Profile"):
+    try:
+        profile = get_astrological_profile(
+            birth_date.strftime("%Y/%m/%d"),
+            birth_time.strftime("%H:%M"),
+            timezone_str,
+            latitude,
+            longitude
+        )
+        st.success(f"Astrological Profile for {name or 'You'}")
+        for key, value in profile.items():
+            st.subheader(key)
+            st.write(value)
+
+        st.markdown("✨ *More interpretations and planetary alignments coming soon...*")
+
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
