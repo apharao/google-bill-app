@@ -7,7 +7,7 @@ if "question_number" not in st.session_state:
     st.session_state.answers = []
     st.session_state.guess_ready = False
 
-# Example question bank (expandable)
+# Example question bank
 default_questions = [
     "Is it a living thing?",
     "Can it be found indoors?",
@@ -37,30 +37,30 @@ st.title("🧠 21 Questions - AI Guesses Your Word")
 
 st.markdown("Think of an object, but don't tell me. I will ask you up to 21 yes/no questions to guess it!")
 
-if st.session_state.question_number <= 21:
-    current_q = default_questions[st.session_state.question_number - 1]
-    st.subheader(f"Question {st.session_state.question_number}:")
+if st.session_state["question_number"] <= 21:
+    current_q = default_questions[st.session_state["question_number"] - 1]
+    st.subheader(f"Question {st.session_state['question_number']}:")
     st.markdown(f"**{current_q}**")
 
-    response = st.radio("Your answer:", ["Yes", "No", "Maybe"], key=f"q{st.session_state.question_number}")
+    response = st.radio("Your answer:", ["Yes", "No", "Maybe"], key=f"q{st.session_state['question_number']}")
 
     if st.button("Next"):
-        st.session_state.questions.append(current_q)
-        st.session_state.answers.append(response)
-        st.session_state.question_number += 1
-        if st.session_state.question_number > 21:
-            st.session_state.guess_ready = True
+        st.session_state["questions"].append(current_q)
+        st.session_state["answers"].append(response)
+        st.session_state["question_number"] += 1
+        if st.session_state["question_number"] > 21:
+            st.session_state["guess_ready"] = True
         st.experimental_rerun()
 else:
     st.success("I've asked 21 questions. Time to guess your word!")
 
-if st.session_state.guess_ready:
-    # Very basic "guess" logic - this could use a trained model later
+if st.session_state.get("guess_ready", False):
     from random import choice
     sample_guesses = ["A phone", "A cat", "A book", "A jacket", "A blender", "A tree", "A television", "A backpack"]
     st.subheader("🤔 My Guess Is...")
     st.header(choice(sample_guesses))
 
     if st.button("Start Over"):
-        st.session_state.clear()
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.experimental_rerun()
